@@ -49,9 +49,6 @@ jobs:
       with:
         cmd: install # will run `yarn install` command
 
-    - name: Copy Database yml
-      run: mv config/database.yml config/database.yml
-
     - name: Create DB & Precompile Assets
       env:
         RAILS_ENV: test
