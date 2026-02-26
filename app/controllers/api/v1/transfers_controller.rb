@@ -10,10 +10,10 @@ module Api
               amount: transfer_params[:amount],
               idempotency_key: transfer_params[:idempotency_key]
             ).call
-            render json: { message: "Success" }
+            render json: { message: "successfully balance transfered" }
           rescue ActiveRecord::RecordNotFound => e
             render json: { error: e.message }, status: :not_found
-          rescue TransferService::SameWalletError => e
+          rescue TransferService::InsufficientBalanceError => e
             render json: { error: e.message }, status: :unprocessable_entity
           rescue StandardError => e
             render json: { error: e.message }, status: :unprocessable_entity
