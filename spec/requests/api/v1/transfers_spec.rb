@@ -16,6 +16,12 @@ RSpec.describe 'API V1 Transfers', type: :request do
       to_wallet.reload
       expect(from_wallet.balance).to be == 800
       expect(to_wallet.balance).to be == 700
+      expect(from_wallet.outgoing_transfers.count).to eq(1)
+      transfer = from_wallet.outgoing_transfers.last
+      expect(transfer.to_wallet_id).to eq(to_wallet.id)
+      expect(transfer.amount).to eq(200)
+      expect(transfer.idempotency_key).to eq(idemp)
+      expect(transfer.status).to eq('completed')
     end
 
     it 'rejects transfers with amount less than or equal to 0' do
