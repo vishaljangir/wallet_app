@@ -6,32 +6,64 @@ on:
     branches: [ main ]
 
 jobs:
-  scan_ruby:
+  test:
+
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0.26
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+        - 3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+      redis:
+        # Docker Hub image
+        image: redis
+        # Set health checks to wait until redis has started
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps port 6379 on service container to the host
+          - 6379:6379
+    strategy:
+      matrix:
+        ruby-version: ['3.2.2']
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+    - uses: actions/checkout@v2
+    - name: Set up Ruby
+    # To automatically get bug fixes and new Ruby versions for ruby/setup-ruby,
+    # change this to (see https://github.com/ruby/setup-ruby#versioning):
+      uses: ruby/setup-ruby@v1
+      # uses: ruby/setup-ruby@473e4d8fe5dd94ee328fdfca9f8c9c7afc9dae5e
+      with:
+        ruby-version: ${{ matrix.ruby-version }}
+        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
+    - name: Setup Yarn
+      uses: borales/actions-yarn@v3.0.0
+      with:
+        cmd: install # will run `yarn install` command
 
+    - name: Copy Database yml
+      run: mv config/database.yml.sample config/database.yml
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
+    - name: Create DB & Precompile Assets
+      env:
+        RAILS_ENV: test
+        NODE_ENV: test
+        DB_PASSWORD: root
+        # tell Rails to use proper port for MySQL
+        DB_PORT: ${{ job.services.mysql.ports[3306] }}
+      run: |
+        bin/rails db:prepare
 
-      - name: Prepare RuboCop cache
-        uses: actions/cache@v4
-        env:
-          DEPENDENCIES_HASH: ${{ hashFiles('.ruby-version', '**/.rubocop.yml', '**/.rubocop_todo.yml', 'Gemfile.lock') }}
-        with:
-          path: ${{ env.RUBOCOP_CACHE_ROOT }}
-          key: rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || 'default' }}
-          restore-keys: |
-            rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
-
-      - name: Lint code for consistent style
-        run: bin/rubocop -f github
+    - name: Run tests
+      env:
+        DB_PASSWORD: root
+        DB_PORT: ${{ job.services.mysql.ports[3306] }} # get randomly assigned published port
+      run: bundle exec rspec
