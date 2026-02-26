@@ -26,7 +26,8 @@ RSpec.describe 'API V1 Transfers', type: :request do
       expect(from_wallet.balance).to be == 1000
       expect(to_wallet.balance).to be == 500
       amount_error = JSON.parse(response.body)['error']
-      expect(amount_error).to eq('Validation failed: Amount must be greater than 0')
+      expect(amount_error).to eq('Unprocessable Content')
+      expect(from_wallet.outgoing_transfers.count).to eq(0)
     end
 
     it 'rejects transfers with insufficient balance' do
@@ -34,15 +35,25 @@ RSpec.describe 'API V1 Transfers', type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
       from_wallet.reload
       to_wallet.reload
+      from_wallet.outgoing_transfers.last.tap do |transfer|
+        expect(transfer.status).to eq('failed')
+        expect(transfer.message).to eq('WalletTransferService::InsufficientBalanceError')
+      end
       expect(from_wallet.balance).to be == 1000
       expect(to_wallet.balance).to be == 500
+      
       insufficient_balance_error = JSON.parse(response.body)['error']
-      expect(insufficient_balance_error).to eq('Insufficient balance in wallet')
+      expect(insufficient_balance_error).to eq('WalletTransferService::InsufficientBalanceError')
     end
 
     it 'rejects same-wallet transfers' do
       post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: from_wallet.id, amount: 10, idempotency_key: SecureRandom.uuid }, as: :json
       expect(response).to have_http_status(:unprocessable_entity)
+      from_wallet.reload
+      to_wallet.reload
+      expect(from_wallet.outgoing_transfers.count).to eq(0)
+      expect(from_wallet.balance).to be == 1000
+      expect(to_wallet.balance).to be == 500
     end
 
     it 'is idempotent for same (from_wallet_id, idempotency_key)' do
@@ -54,6 +65,7 @@ RSpec.describe 'API V1 Transfers', type: :request do
       expect(from_wallet.balance).to be == 450
       expect(to_wallet.balance).to be == 1050
 
+      # second request with same idempotency key should not create a new transfer or change balances
       post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, amount: 3, idempotency_key: idemp }, as: :json
       expect(response).to have_http_status(:unprocessable_entity)
       from_wallet.reload
@@ -64,7 +76,59 @@ RSpec.describe 'API V1 Transfers', type: :request do
 
     it 'returns not found if wallet does not exist' do
       post '/api/v1/transfers', params: { from_wallet_id: 9999, to_wallet_id: to_wallet.id, amount: 10, idempotency_key: SecureRandom.uuid }, as: :json
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'returns not found if to_wallet does not exist' do
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: 9999, amount: 10, idempotency_key: SecureRandom.uuid }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'returns unprocessable entity if idempotency key is missing' do
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, amount: 10 }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'returns unprocessable entity if idempotency key is not unique for sender' do
+      idemp = SecureRandom.uuid
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, amount: 10, idempotency_key: idemp }, as: :json
+      expect(response).to have_http_status(:created)
+
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, amount: 10, idempotency_key: idemp }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'returns unprocessable entity if amount is not a number' do
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, amount: 'abc', idempotency_key: SecureRandom.uuid }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+      from_wallet.reload
+      to_wallet.reload
+      expect(from_wallet.balance).to be == 1000
+      expect(to_wallet.balance).to be == 500
+    end
+
+    it 'returns unprocessable entity if amount is negative' do
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, amount: -50, idempotency_key: SecureRandom.uuid }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+      from_wallet.reload
+      to_wallet.reload
+      expect(from_wallet.balance).to be == 1000
+      expect(to_wallet.balance).to be == 500
+    end
+
+    it 'returns unprocessable entity if from_wallet_id is missing' do
+      post '/api/v1/transfers', params: { to_wallet_id: to_wallet.id, amount: 10, idempotency_key: SecureRandom.uuid }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'returns unprocessable entity if to_wallet_id is missing' do
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, amount: 10, idempotency_key: SecureRandom.uuid }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'returns unprocessable entity if amount is missing' do
+      post '/api/v1/transfers', params: { from_wallet_id: from_wallet.id, to_wallet_id: to_wallet.id, idempotency_key: SecureRandom.uuid }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
     end
   end
 end

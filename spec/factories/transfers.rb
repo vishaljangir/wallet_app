@@ -7,5 +7,6 @@ FactoryBot.define do
     amount { 100 }
     idempotency_key { SecureRandom.uuid }
     status { :pending }
+    message { nil }
   end
 end

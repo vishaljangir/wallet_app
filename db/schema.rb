@@ -10,12 +10,13 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_25_181500) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_26_165013) do
   create_table "transfers", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.bigint "amount", null: false
     t.datetime "created_at", null: false
     t.bigint "from_wallet_id", null: false
     t.string "idempotency_key", null: false
+    t.string "message"
     t.string "status", default: "pending", null: false
     t.bigint "to_wallet_id", null: false
     t.datetime "updated_at", null: false
