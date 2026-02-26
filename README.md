@@ -56,14 +56,14 @@ Request formats supported: application/json (also accepts form data).
 Parameters
 - from_wallet_id: integer (required)
 - to_wallet_id: integer (required)
-- amount: string/decimal (required) — the amount in major units (e.g. "10.50"). Internally converted to cents.
+- amount: integer (required) — the amount in cents (e.g. 1050 for $10.50). The API expects the amount provided in cents.
 - idempotency_key: string (optional but recommended) — used to ensure idempotent transfers
 
 Example (curl)
 
 	curl -X POST http://localhost:3000/api/v1/transfers \
 		-H "Content-Type: application/json" \
-		-d '{"transfer": {"from_wallet_id": 1, "to_wallet_id": 2, "amount":"10.50", "idempotency_key":"unique-key-123"}}'
+		-d '{"transfer": {"from_wallet_id": 1, "to_wallet_id": 2, "amount":1050, "idempotency_key":"unique-key-123"}}'
 
 Successful response (HTTP 200)
 
@@ -74,7 +74,7 @@ Error responses
 - 422 Unprocessable Entity: for business errors (insufficient balance, same wallet, or other validation)
 
 Notes about implementation
-- Amounts are converted to integer cents inside `TransferService#convert_to_cents`.
+- API accepts amounts in integer cents; balances are stored in cents (e.g. 1050 = $10.50).
 - Transfers run inside an ActiveRecord transaction and use row-level locking (`Wallet.lock`) to avoid race conditions.
 - The code creates a `Transfer` record with `status: :completed` on success.
 - There's a unique index on the transfers table to support idempotency (see db/migrate files).
